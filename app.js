@@ -80,6 +80,62 @@ const Storage = {
     const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
     const all = this.getAll();
     return all.filter(record => record.date && record.date.startsWith(monthPrefix));
+  },
+
+  /**
+   * Retrieves all records as a map of dateKey -> record.
+   * @returns {Object}
+   */
+  getAllAsMap() {
+    const map = {};
+    const all = this.getAll();
+    all.forEach(item => {
+      if (item.date) map[item.date] = item;
+    });
+    return map;
+  },
+
+  /**
+   * Merges an incoming map of records into localStorage.
+   * Compares updatedAt timestamps to keep the latest changes.
+   * @param {Object} recordsMap
+   * @returns {number} count of updated records
+   */
+  mergeFromMap(recordsMap) {
+    if (!recordsMap || typeof recordsMap !== 'object') return 0;
+    let count = 0;
+    Object.keys(recordsMap).forEach(dateKey => {
+      if (this.dateKeyPattern.test(dateKey)) {
+        const incoming = recordsMap[dateKey];
+        const existing = this.get(dateKey);
+        if (!existing) {
+          this.save(dateKey, incoming);
+          count++;
+        } else {
+          const incomingTime = new Date(incoming.updatedAt || 0).getTime();
+          const existingTime = new Date(existing.updatedAt || 0).getTime();
+          if (incomingTime >= existingTime) {
+            this.save(dateKey, incoming);
+            count++;
+          }
+        }
+      }
+    });
+    return count;
+  },
+
+  /**
+   * Clears all attendance date keys from localStorage.
+   */
+  clearAll() {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && this.dateKeyPattern.test(key)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
   }
 };
 
@@ -241,7 +297,227 @@ const DateUtils = {
 };
 
 // =============================================================================
-// 3. Application State & Controller
+// 3. Cloud Sync & Backup Engine (GitHub REST API + Unauthenticated Fallback)
+// =============================================================================
+const CloudSync = {
+  CONFIG_KEY: 'tracker_cloud_config',
+  CACHE_SHA_KEY: 'tracker_cloud_sha',
+  LAST_SYNC_KEY: 'tracker_last_sync_time',
+
+  /**
+   * UTF-8 safe base64 encoder
+   */
+  toBase64(str) {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) =>
+      String.fromCharCode('0x' + p1)
+    ));
+  },
+
+  /**
+   * UTF-8 safe base64 decoder
+   */
+  fromBase64(b64) {
+    return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
+      '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    ).join(''));
+  },
+
+  getConfig() {
+    try {
+      const raw = localStorage.getItem(this.CONFIG_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {
+      owner: 'dkaxaytech',
+      repo: 'tracker',
+      branch: 'main',
+      path: 'data/attendance.json',
+      token: ''
+    };
+  },
+
+  saveConfig(cfg) {
+    localStorage.setItem(this.CONFIG_KEY, JSON.stringify(cfg));
+  },
+
+  getToken() {
+    return this.getConfig().token || '';
+  },
+
+  setToken(token) {
+    const cfg = this.getConfig();
+    cfg.token = (token || '').trim();
+    this.saveConfig(cfg);
+  },
+
+  clearToken() {
+    const cfg = this.getConfig();
+    cfg.token = '';
+    this.saveConfig(cfg);
+    localStorage.removeItem(this.CACHE_SHA_KEY);
+  },
+
+  getLastSyncTime() {
+    return localStorage.getItem(this.LAST_SYNC_KEY) || null;
+  },
+
+  setLastSyncTime() {
+    localStorage.setItem(this.LAST_SYNC_KEY, new Date().toISOString());
+  },
+
+  /**
+   * Pulls latest attendance records from GitHub.
+   * If token is present: uses authenticated GitHub API and caches SHA.
+   * If token is not present: uses raw.githubusercontent.com for unauthenticated cross-browser read.
+   */
+  async pull() {
+    const cfg = this.getConfig();
+    const token = cfg.token;
+
+    try {
+      if (token) {
+        const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}&_t=${Date.now()}`;
+        const res = await fetch(url, {
+          headers: {
+            'Authorization': `token ${token}`,
+            'Accept': 'application/vnd.github+json'
+          }
+        });
+
+        if (res.status === 404) {
+          return { success: true, count: 0, sha: null };
+        }
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || `GitHub error ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (data.sha) {
+          localStorage.setItem(this.CACHE_SHA_KEY, data.sha);
+        }
+
+        if (data.content) {
+          const cleanB64 = data.content.replace(/\s/g, '');
+          const decoded = this.fromBase64(cleanB64);
+          const parsed = JSON.parse(decoded);
+          if (parsed && parsed.records) {
+            const count = Storage.mergeFromMap(parsed.records);
+            this.setLastSyncTime();
+            return { success: true, count, sha: data.sha };
+          }
+        }
+        return { success: true, count: 0, sha: data.sha };
+      } else {
+        // Unauthenticated read via raw GitHub CDN
+        const rawUrl = `https://raw.githubusercontent.com/${cfg.owner}/${cfg.repo}/${cfg.branch}/${cfg.path}?_t=${Date.now()}`;
+        const res = await fetch(rawUrl);
+        if (res.ok) {
+          const parsed = await res.json();
+          if (parsed && parsed.records) {
+            const count = Storage.mergeFromMap(parsed.records);
+            this.setLastSyncTime();
+            return { success: true, count };
+          }
+        }
+        return { success: true, count: 0 };
+      }
+    } catch (e) {
+      console.warn('CloudSync.pull failed:', e);
+      return { success: false, count: 0, error: e.message };
+    }
+  },
+
+  /**
+   * Pushes local attendance records to GitHub via Contents API.
+   */
+  async push() {
+    const cfg = this.getConfig();
+    if (!cfg.token) {
+      return { success: false, error: 'No GitHub token configured in this browser.' };
+    }
+
+    try {
+      // 1. Fetch latest SHA from GitHub
+      let latestSha = localStorage.getItem(this.CACHE_SHA_KEY);
+      const getUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}&_t=${Date.now()}`;
+      const getRes = await fetch(getUrl, {
+        headers: {
+          'Authorization': `token ${cfg.token}`,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+
+      if (getRes.ok) {
+        const fileInfo = await getRes.json();
+        latestSha = fileInfo.sha;
+        localStorage.setItem(this.CACHE_SHA_KEY, latestSha);
+
+        // Merge any remote records that may have been saved from another browser
+        if (fileInfo.content) {
+          try {
+            const remoteParsed = JSON.parse(this.fromBase64(fileInfo.content.replace(/\s/g, '')));
+            if (remoteParsed && remoteParsed.records) {
+              Storage.mergeFromMap(remoteParsed.records);
+            }
+          } catch (err) {}
+        }
+      }
+
+      // 2. Prepare JSON payload
+      const allRecords = Storage.getAllAsMap();
+      const payload = {
+        version: 1,
+        lastUpdated: new Date().toISOString(),
+        records: allRecords
+      };
+
+      const jsonStr = JSON.stringify(payload, null, 2);
+      const b64Content = this.toBase64(jsonStr);
+
+      const putBody = {
+        message: `Sync attendance records [${new Date().toLocaleDateString()}]`,
+        content: b64Content,
+        branch: cfg.branch
+      };
+      if (latestSha) {
+        putBody.sha = latestSha;
+      }
+
+      // 3. Put to GitHub Contents API
+      const putUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
+      const putRes = await fetch(putUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${cfg.token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(putBody)
+      });
+
+      if (!putRes.ok) {
+        const err = await putRes.json().catch(() => ({}));
+        throw new Error(err.message || `Push failed (status ${putRes.status})`);
+      }
+
+      const putResult = await putRes.json();
+      if (putResult && putResult.content && putResult.content.sha) {
+        localStorage.setItem(this.CACHE_SHA_KEY, putResult.content.sha);
+      }
+
+      this.setLastSyncTime();
+      return { success: true };
+    } catch (e) {
+      console.error('CloudSync.push error:', e);
+      return { success: false, error: e.message };
+    }
+  }
+};
+
+// =============================================================================
+// 4. Application State & Controller
 // =============================================================================
 class AttendanceApp {
   constructor() {
@@ -254,6 +530,7 @@ class AttendanceApp {
     this.cacheDomElements();
     this.bindEvents();
     this.render();
+    this.initCloudSync();
   }
 
   cacheDomElements() {
@@ -263,6 +540,29 @@ class AttendanceApp {
     this.nextMonthBtn = document.getElementById('next-month-btn');
     this.calendarMonthYear = document.getElementById('calendar-month-year');
     this.calendarGrid = document.getElementById('calendar-grid');
+
+    // Cloud Sync & Backup Elements
+    this.syncModalBtn = document.getElementById('sync-modal-btn');
+    this.syncStatusDot = document.getElementById('sync-status-dot');
+    this.syncStatusText = document.getElementById('sync-status-text');
+    this.syncModal = document.getElementById('sync-modal');
+    this.closeSyncModal = document.getElementById('close-sync-modal');
+    this.tabBtnCloud = document.getElementById('tab-btn-cloud');
+    this.tabBtnBackup = document.getElementById('tab-btn-backup');
+    this.tabCloud = document.getElementById('tab-cloud');
+    this.tabBackup = document.getElementById('tab-backup');
+    this.syncRepoDisplay = document.getElementById('sync-repo-display');
+    this.modalSyncBadge = document.getElementById('modal-sync-badge');
+    this.modalLastSynced = document.getElementById('modal-last-synced');
+    this.cloudSyncForm = document.getElementById('cloud-sync-form');
+    this.syncTokenInput = document.getElementById('sync-token-input');
+    this.toggleTokenVisibility = document.getElementById('toggle-token-visibility');
+    this.syncNowBtn = document.getElementById('sync-now-btn');
+    this.saveTokenBtn = document.getElementById('save-token-btn');
+    this.disconnectSyncBtn = document.getElementById('disconnect-sync-btn');
+    this.exportBackupBtn = document.getElementById('export-backup-btn');
+    this.importBackupBtn = document.getElementById('import-backup-btn');
+    this.importFileInput = document.getElementById('import-file-input');
 
     // KPI Cards
     this.cardTodayHours = document.getElementById('card-today-hours');
@@ -438,6 +738,105 @@ class AttendanceApp {
     this.unblockLeaveBtn.addEventListener('click', () => {
       this.handleUnblockLeave();
     });
+
+    // Cloud Sync Modal Toggle
+    if (this.syncModalBtn) {
+      this.syncModalBtn.addEventListener('click', () => {
+        this.openSyncModal();
+      });
+    }
+
+    if (this.closeSyncModal) {
+      this.closeSyncModal.addEventListener('click', () => {
+        this.closeSyncModalDialog();
+      });
+    }
+
+    if (this.syncModal) {
+      this.syncModal.addEventListener('click', (e) => {
+        if (e.target === this.syncModal) {
+          this.closeSyncModalDialog();
+        }
+      });
+    }
+
+    // Modal Tabs
+    if (this.tabBtnCloud) {
+      this.tabBtnCloud.addEventListener('click', () => {
+        this.switchModalTab('tab-cloud');
+      });
+    }
+
+    if (this.tabBtnBackup) {
+      this.tabBtnBackup.addEventListener('click', () => {
+        this.switchModalTab('tab-backup');
+      });
+    }
+
+    // Token Visibility Toggle
+    if (this.toggleTokenVisibility) {
+      this.toggleTokenVisibility.addEventListener('click', () => {
+        const isPwd = this.syncTokenInput.type === 'password';
+        this.syncTokenInput.type = isPwd ? 'text' : 'password';
+        this.toggleTokenVisibility.textContent = isPwd ? '🔒' : '👁️';
+      });
+    }
+
+    // Save Token & Trigger Initial Sync
+    if (this.cloudSyncForm) {
+      this.cloudSyncForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const val = this.syncTokenInput.value.trim();
+        if (!val) {
+          this.showToast('Please enter a GitHub Personal Access Token', 'error');
+          return;
+        }
+        CloudSync.setToken(val);
+        this.showToast('Token saved! Syncing with GitHub...', 'info');
+        this.refreshSyncModalUI();
+        await this.triggerCloudSync();
+      });
+    }
+
+    // Manual Sync Now Button
+    if (this.syncNowBtn) {
+      this.syncNowBtn.addEventListener('click', async () => {
+        await this.triggerCloudSync();
+      });
+    }
+
+    // Disconnect Token
+    if (this.disconnectSyncBtn) {
+      this.disconnectSyncBtn.addEventListener('click', () => {
+        if (confirm('Disconnect GitHub Cloud Sync from this browser? Your local data will be preserved.')) {
+          CloudSync.clearToken();
+          this.syncTokenInput.value = '';
+          this.refreshSyncModalUI();
+          this.updateSyncStatusUI('offline');
+          this.showToast('Disconnected from GitHub Cloud Sync', 'info');
+        }
+      });
+    }
+
+    // Export Backup File
+    if (this.exportBackupBtn) {
+      this.exportBackupBtn.addEventListener('click', () => {
+        this.handleExportBackup();
+      });
+    }
+
+    // Import Backup File
+    if (this.importBackupBtn) {
+      this.importBackupBtn.addEventListener('click', () => {
+        this.importFileInput.click();
+      });
+    }
+
+    if (this.importFileInput) {
+      this.importFileInput.addEventListener('change', (e) => {
+        this.handleImportBackup(e);
+      });
+    }
   }
 
   // ===========================================================================
@@ -812,6 +1211,7 @@ class AttendanceApp {
     this.leaveReasonInput.value = '';
     this.showToast(`${this.selectedDate} marked as ${type}. Date blocked.`, 'success');
     this.render();
+    this.triggerCloudSync(true);
   }
 
   handleUnblockLeave() {
@@ -821,6 +1221,7 @@ class AttendanceApp {
       Storage.delete(this.selectedDate);
       this.showToast(`Leave removed for ${this.selectedDate}. Date unblocked.`, 'info');
       this.render();
+      this.triggerCloudSync(true);
     }
   }
 
@@ -899,6 +1300,7 @@ class AttendanceApp {
         : `Login time saved for ${this.selectedDate} (locked)`;
       this.showToast(msg, 'success');
       this.render();
+      this.triggerCloudSync(true);
     } else {
       this.showAlert('Failed to save record to storage.', 'error');
     }
@@ -912,6 +1314,7 @@ class AttendanceApp {
       Storage.delete(this.selectedDate);
       this.showToast(`Record deleted for ${this.selectedDate}`, 'info');
       this.render();
+      this.triggerCloudSync(true);
     }
   }
 
@@ -1035,6 +1438,190 @@ class AttendanceApp {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  // ===========================================================================
+  // Cloud Sync & Backup Methods
+  // ===========================================================================
+  initCloudSync() {
+    const hasToken = !!CloudSync.getToken();
+    this.updateSyncStatusUI(hasToken ? 'connected' : 'offline');
+
+    // Run non-blocking pull on initial load to get any remote changes from other browsers
+    CloudSync.pull().then(res => {
+      if (res.success && res.count > 0) {
+        this.render();
+        this.showToast(`☁️ Loaded ${res.count} updated records from cloud`, 'info');
+      }
+      this.updateSyncStatusUI(CloudSync.getToken() ? 'connected' : 'offline');
+    }).catch(err => {
+      console.warn('Initial cloud sync error:', err);
+    });
+  }
+
+  updateSyncStatusUI(status) {
+    if (!this.syncStatusDot || !this.syncStatusText) return;
+
+    this.syncStatusDot.className = `sync-dot ${status}`;
+    if (status === 'connected') {
+      this.syncStatusText.textContent = 'Cloud Synced';
+      this.syncModalBtn.title = 'Cloud Synced with GitHub';
+    } else if (status === 'syncing') {
+      this.syncStatusText.textContent = 'Syncing...';
+      this.syncModalBtn.title = 'Syncing with GitHub...';
+    } else if (status === 'pending') {
+      this.syncStatusText.textContent = 'Sync Pending';
+      this.syncModalBtn.title = 'Changes pending upload';
+    } else {
+      this.syncStatusText.textContent = 'Cloud Sync';
+      this.syncModalBtn.title = 'Connect GitHub Cloud Sync';
+    }
+
+    if (this.modalSyncBadge) {
+      if (status === 'connected') {
+        this.modalSyncBadge.className = 'badge-status badge-connected';
+        this.modalSyncBadge.textContent = 'Connected & Synced';
+      } else if (status === 'syncing') {
+        this.modalSyncBadge.className = 'badge-status badge-syncing';
+        this.modalSyncBadge.textContent = 'Syncing in Progress...';
+      } else if (status === 'pending') {
+        this.modalSyncBadge.className = 'badge-status badge-pending';
+        this.modalSyncBadge.textContent = 'Sync Pending / Error';
+      } else {
+        this.modalSyncBadge.className = 'badge-status badge-offline';
+        this.modalSyncBadge.textContent = 'Offline / Local Only';
+      }
+    }
+  }
+
+  openSyncModal() {
+    if (!this.syncModal) return;
+    this.refreshSyncModalUI();
+    this.syncModal.style.display = 'flex';
+  }
+
+  closeSyncModalDialog() {
+    if (!this.syncModal) return;
+    this.syncModal.style.display = 'none';
+  }
+
+  switchModalTab(tabId) {
+    if (this.tabBtnCloud && this.tabBtnBackup) {
+      this.tabBtnCloud.classList.toggle('active', tabId === 'tab-cloud');
+      this.tabBtnBackup.classList.toggle('active', tabId === 'tab-backup');
+    }
+    if (this.tabCloud && this.tabBackup) {
+      this.tabCloud.style.display = tabId === 'tab-cloud' ? 'flex' : 'none';
+      this.tabBackup.style.display = tabId === 'tab-backup' ? 'flex' : 'none';
+    }
+  }
+
+  refreshSyncModalUI() {
+    const cfg = CloudSync.getConfig();
+    if (this.syncRepoDisplay) {
+      this.syncRepoDisplay.textContent = `${cfg.owner}/${cfg.repo}`;
+    }
+
+    const token = CloudSync.getToken();
+    if (this.syncTokenInput) {
+      this.syncTokenInput.value = token;
+    }
+
+    if (this.disconnectSyncBtn) {
+      this.disconnectSyncBtn.style.display = token ? 'inline-block' : 'none';
+    }
+
+    if (this.modalLastSynced) {
+      const last = CloudSync.getLastSyncTime();
+      if (last) {
+        const d = new Date(last);
+        this.modalLastSynced.textContent = d.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } else {
+        this.modalLastSynced.textContent = 'Never';
+      }
+    }
+
+    this.updateSyncStatusUI(token ? 'connected' : 'offline');
+  }
+
+  async triggerCloudSync(isSilent = false) {
+    const token = CloudSync.getToken();
+    if (!token) {
+      this.updateSyncStatusUI('offline');
+      return;
+    }
+
+    this.updateSyncStatusUI('syncing');
+    const result = await CloudSync.push();
+    if (result.success) {
+      this.updateSyncStatusUI('connected');
+      this.refreshSyncModalUI();
+      if (!isSilent) {
+        this.showToast('☁️ Cloud synchronization complete!', 'success');
+      }
+    } else {
+      this.updateSyncStatusUI('pending');
+      this.refreshSyncModalUI();
+      if (!isSilent) {
+        this.showToast(`Cloud sync issue: ${result.error}`, 'error');
+      }
+    }
+  }
+
+  handleExportBackup() {
+    const records = Storage.getAllAsMap();
+    const count = Object.keys(records).length;
+    const data = {
+      app: 'Personal Attendance Tracker',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      totalRecords: count,
+      records: records
+    };
+
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance_backup_${DateUtils.getTodayKey()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    this.showToast(`📥 Exported backup with ${count} record(s)`, 'success');
+  }
+
+  handleImportBackup(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target.result;
+        const parsed = JSON.parse(content);
+        if (!parsed || !parsed.records || typeof parsed.records !== 'object') {
+          throw new Error('Invalid backup file format.');
+        }
+
+        const count = Storage.mergeFromMap(parsed.records);
+        this.render();
+        this.showToast(`📤 Restored ${count} record(s) from backup!`, 'success');
+        this.triggerCloudSync(true);
+      } catch (err) {
+        this.showToast(`Failed to restore backup: ${err.message}`, 'error');
+      } finally {
+        this.importFileInput.value = '';
+      }
+    };
+    reader.readAsText(file);
   }
 }
 

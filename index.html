@@ -29,6 +29,10 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="sync-modal-btn" class="btn btn-sync" title="Cloud Sync & Backup">
+          <span class="sync-dot" id="sync-status-dot"></span>
+          <span id="sync-status-text">Cloud Sync</span>
+        </button>
         <button id="today-btn" class="btn btn-secondary" title="Jump to today">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
@@ -347,8 +351,139 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <p>Personal Attendance Tracker &bull; Local Storage Persistent</p>
+      <p>Personal Attendance Tracker &bull; Cloud &amp; Local Storage Persistent</p>
     </footer>
+  </div>
+
+  <!-- Cloud Sync & Backup Modal -->
+  <div id="sync-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-box">
+          <div class="modal-icon-circle">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="modal-title">Cloud Sync &amp; Backup</h3>
+            <p class="modal-subtitle">Keep your attendance saved across all browsers &amp; devices</p>
+          </div>
+        </div>
+        <button type="button" id="close-sync-modal" class="btn-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button type="button" class="tab-btn active" id="tab-btn-cloud" data-tab="tab-cloud">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path>
+          </svg>
+          GitHub Cloud Sync
+        </button>
+        <button type="button" class="tab-btn" id="tab-btn-backup" data-tab="tab-backup">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          File Backup &amp; Restore
+        </button>
+      </div>
+
+      <!-- Tab 1: Cloud Sync -->
+      <div id="tab-cloud" class="tab-content active">
+        <div class="sync-info-banner">
+          <div class="sync-banner-row">
+            <span class="sync-banner-label">Repository:</span>
+            <span class="sync-banner-val font-mono" id="sync-repo-display">dkaxaytech/tracker</span>
+          </div>
+          <div class="sync-banner-row">
+            <span class="sync-banner-label">Status:</span>
+            <span id="modal-sync-badge" class="badge-status badge-offline">Offline / Local only</span>
+          </div>
+          <div class="sync-banner-row">
+            <span class="sync-banner-label">Last Synced:</span>
+            <span id="modal-last-synced" class="text-muted">Never</span>
+          </div>
+        </div>
+
+        <form id="cloud-sync-form" class="sync-form">
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="sync-token-input" class="form-label">GitHub Personal Access Token</label>
+              <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener" class="link-hint">Get Token &rarr;</a>
+            </div>
+            <div class="input-with-toggle">
+              <input 
+                type="password" 
+                id="sync-token-input" 
+                class="form-control" 
+                placeholder="ghp_... or fine-grained token"
+                autocomplete="off"
+              >
+              <button type="button" id="toggle-token-visibility" class="btn-input-icon" title="Show/Hide Token">👁️</button>
+            </div>
+            <p class="form-hint">
+              Stored securely only in this browser. Enables saving and syncing your attendance records automatically across all your devices.
+            </p>
+          </div>
+
+          <div class="sync-modal-actions">
+            <button type="button" id="sync-now-btn" class="btn btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Sync Now
+            </button>
+            <button type="submit" id="save-token-btn" class="btn btn-secondary">
+              Save Token
+            </button>
+            <button type="button" id="disconnect-sync-btn" class="btn btn-ghost-danger" style="display: none;">
+              Disconnect
+            </button>
+          </div>
+        </form>
+
+        <div class="sync-tip-box">
+          <span class="sync-tip-icon">💡</span>
+          <div>
+            <strong>Cross-Browser Tip:</strong>
+            When opening on a new computer, Edge, or mobile phone, open <strong>Cloud Sync</strong> and enter your token once. All your attendance records will sync instantly!
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Backup & Restore -->
+      <div id="tab-backup" class="tab-content" style="display: none;">
+        <div class="backup-section">
+          <div class="backup-card">
+            <div class="backup-card-info">
+              <h4>📥 Download Backup File</h4>
+              <p>Export all attendance records, punch-in locks, and leave records as a portable JSON file.</p>
+            </div>
+            <button type="button" id="export-backup-btn" class="btn btn-secondary">
+              Export Data (.json)
+            </button>
+          </div>
+
+          <div class="backup-card">
+            <div class="backup-card-info">
+              <h4>📤 Restore from Backup File</h4>
+              <p>Import attendance records from a previously exported backup file.</p>
+            </div>
+            <div>
+              <input type="file" id="import-file-input" accept=".json" style="display: none;">
+              <button type="button" id="import-backup-btn" class="btn btn-secondary">
+                Select File to Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- Toast Notification -->
