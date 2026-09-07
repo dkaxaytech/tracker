@@ -1,5 +1,18 @@
 {
   "version": 1,
-  "lastUpdated": "2026-09-07T14:54:35.325Z",
-  "records": {}
+  "lastUpdated": "2026-09-07T15:05:10.933Z",
+  "records": {
+    "2026-09-07": {
+      "date": "2026-09-07",
+      "shift": "",
+      "login": "12:20",
+      "logout": "",
+      "breakMinutes": 0,
+      "totalMinutes": 0,
+      "totalFormatted": "In progress",
+      "status": "in-progress",
+      "isOvernight": false,
+      "updatedAt": "2026-09-07T07:31:53.540Z"
+    }
+  }
 }
