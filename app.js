@@ -1445,7 +1445,17 @@ class AttendanceApp {
   // ===========================================================================
   initCloudSync() {
     const hasToken = !!CloudSync.getToken();
-    this.updateSyncStatusUI(hasToken ? 'connected' : 'offline');
+    const localCount = Storage.getAll().length;
+
+    if (hasToken) {
+      this.updateSyncStatusUI('connected');
+    } else if (localCount > 0) {
+      this.updateSyncStatusUI('pending');
+      this.syncStatusText.textContent = `Sync Records (${localCount})`;
+      this.syncModalBtn.title = `You have ${localCount} attendance record(s) in this browser. Connect Cloud Sync to share across Chrome & mobile.`;
+    } else {
+      this.updateSyncStatusUI('offline');
+    }
 
     // Run non-blocking pull on initial load to get any remote changes from other browsers
     CloudSync.pull().then(res => {
@@ -1453,7 +1463,17 @@ class AttendanceApp {
         this.render();
         this.showToast(`☁️ Loaded ${res.count} updated records from cloud`, 'info');
       }
-      this.updateSyncStatusUI(CloudSync.getToken() ? 'connected' : 'offline');
+      if (CloudSync.getToken()) {
+        this.updateSyncStatusUI('connected');
+      } else {
+        const curCount = Storage.getAll().length;
+        if (curCount > 0) {
+          this.updateSyncStatusUI('pending');
+          this.syncStatusText.textContent = `Sync Records (${curCount})`;
+        } else {
+          this.updateSyncStatusUI('offline');
+        }
+      }
     }).catch(err => {
       console.warn('Initial cloud sync error:', err);
     });
@@ -1546,7 +1566,21 @@ class AttendanceApp {
       }
     }
 
-    this.updateSyncStatusUI(token ? 'connected' : 'offline');
+    if (token) {
+      this.updateSyncStatusUI('connected');
+    } else {
+      const localCount = Storage.getAll().length;
+      if (localCount > 0) {
+        this.updateSyncStatusUI('pending');
+        this.syncStatusText.textContent = `Sync Records (${localCount})`;
+        if (this.modalSyncBadge) {
+          this.modalSyncBadge.className = 'badge-status badge-pending';
+          this.modalSyncBadge.textContent = `Local (${localCount} records ready to sync)`;
+        }
+      } else {
+        this.updateSyncStatusUI('offline');
+      }
+    }
   }
 
   async triggerCloudSync(isSilent = false) {
