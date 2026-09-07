@@ -379,7 +379,7 @@ const CloudSync = {
         const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}&_t=${Date.now()}`;
         const res = await fetch(url, {
           headers: {
-            'Authorization': `token ${token}`,
+            'Authorization': `Bearer ${token}`,
             'Accept': 'application/vnd.github+json'
           }
         });
@@ -390,6 +390,12 @@ const CloudSync = {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
+          if (res.status === 403) {
+            throw new Error("Token lacks access to 'tracker' repo. Use your Classic Token (ghp_) with 'repo' scope.");
+          }
+          if (res.status === 401) {
+            throw new Error("Invalid or expired GitHub token. Please check and re-enter your token.");
+          }
           throw new Error(err.message || `GitHub error ${res.status}`);
         }
 
@@ -444,10 +450,17 @@ const CloudSync = {
       const getUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}?ref=${cfg.branch}&_t=${Date.now()}`;
       const getRes = await fetch(getUrl, {
         headers: {
-          'Authorization': `token ${cfg.token}`,
+          'Authorization': `Bearer ${cfg.token}`,
           'Accept': 'application/vnd.github+json'
         }
       });
+
+      if (getRes.status === 403) {
+        throw new Error("Token lacks access to 'tracker' repo. Use your Classic Token (ghp_) with 'repo' scope.");
+      }
+      if (getRes.status === 401) {
+        throw new Error("Invalid or expired GitHub token. Please check and re-enter your token.");
+      }
 
       if (getRes.ok) {
         const fileInfo = await getRes.json();
@@ -490,7 +503,7 @@ const CloudSync = {
       const putRes = await fetch(putUrl, {
         method: 'PUT',
         headers: {
-          'Authorization': `token ${cfg.token}`,
+          'Authorization': `Bearer ${cfg.token}`,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json'
         },
@@ -499,6 +512,12 @@ const CloudSync = {
 
       if (!putRes.ok) {
         const err = await putRes.json().catch(() => ({}));
+        if (putRes.status === 403 || (err.message && err.message.includes('not accessible by personal access token'))) {
+          throw new Error("Token lacks access to 'tracker' repo. Use your Classic Token (starts with 'ghp_') with 'repo' scope.");
+        }
+        if (putRes.status === 401) {
+          throw new Error("Invalid or expired GitHub token. Please re-enter your Classic Token.");
+        }
         throw new Error(err.message || `Push failed (status ${putRes.status})`);
       }
 
