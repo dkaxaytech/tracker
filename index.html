@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Attendance - Personal Attendance Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <path d="m9 16 2 2 4-4"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="header-title">My Attendance</h1>
+          <p class="subtitle">Personal attendance tracker</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="today-btn" class="btn btn-secondary" title="Jump to today">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          Today
+        </button>
+      </div>
+    </header>
+
+    <!-- Summary KPI Cards -->
+    <section class="summary-cards" aria-label="Attendance Summaries">
+      <div class="summary-card">
+        <div class="card-icon card-icon-today">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div class="card-content">
+          <span class="card-label">Today's Hours</span>
+          <span class="card-value" id="card-today-hours">0h 0m</span>
+          <span class="card-meta" id="card-today-status">Not logged</span>
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="card-icon card-icon-month">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </div>
+        <div class="card-content">
+          <span class="card-label">This Month</span>
+          <span class="card-value" id="card-month-hours">0h 0m</span>
+          <span class="card-meta" id="card-month-label">Selected month total</span>
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="card-icon card-icon-days">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="card-content">
+          <span class="card-label">Days Logged</span>
+          <span class="card-value" id="card-days-logged">0 days</span>
+          <span class="card-meta" id="card-days-meta">In this month</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Workspace (Calendar + Form) -->
+    <main class="main-layout">
+      <!-- Calendar Section -->
+      <section class="panel-card calendar-panel" aria-labelledby="calendar-month-year">
+        <div class="panel-header">
+          <div class="calendar-nav">
+            <button id="prev-month-btn" class="nav-btn" aria-label="Previous month" title="Previous Month">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <h2 id="calendar-month-year" class="panel-title">Month Year</h2>
+            <button id="next-month-btn" class="nav-btn" aria-label="Next month" title="Next Month">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="calendar-container">
+          <!-- Monday to Sunday Weekday Headers -->
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>Mon</span>
+            <span>Tue</span>
+            <span>Wed</span>
+            <span>Thu</span>
+            <span>Fri</span>
+            <span class="weekend-header" title="Weekly Leave">Sat</span>
+            <span class="weekend-header" title="Weekly Leave">Sun</span>
+          </div>
+
+          <!-- Calendar Days Grid -->
+          <div id="calendar-grid" class="calendar-grid" role="grid" aria-label="Monthly Calendar">
+            <!-- Dynamically populated by app.js -->
+          </div>
+        </div>
+
+        <div class="calendar-legend">
+          <span class="legend-item"><span class="legend-dot dot-today"></span> Today</span>
+          <span class="legend-item"><span class="legend-dot dot-selected"></span> Selected</span>
+          <span class="legend-item"><span class="legend-dot dot-logged"></span> Logged</span>
+          <span class="legend-item"><span class="legend-dot dot-weekend"></span> Weekend (Leave)</span>
+          <span class="legend-item"><span class="legend-dot dot-leave"></span> Leave / Holiday</span>
+        </div>
+      </section>
+
+      <!-- Attendance Entry Panel -->
+      <section class="panel-card entry-panel" aria-labelledby="entry-heading">
+        <div class="panel-header">
+          <div>
+            <h2 id="entry-heading" class="panel-title">Attendance Entry</h2>
+            <p id="entry-selected-date" class="panel-subtitle">Select a date</p>
+          </div>
+          <div id="entry-badge" class="entry-status-badge badge-new">New Entry</div>
+        </div>
+
+        <!-- Quick Action Bar: Mark as Leave / Holiday -->
+        <div id="leave-action-container" class="leave-action-container">
+          <button type="button" id="mark-leave-btn" class="btn btn-leave-toggle">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Mark as Leave / Holiday
+          </button>
+          <button type="button" id="unblock-leave-btn" class="btn btn-danger" style="display: none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Remove Leave (Unblock Date)
+          </button>
+        </div>
+
+        <!-- Leave / Holiday Sub-Form -->
+        <div id="leave-form-modal" class="leave-form-box" style="display: none;">
+          <div class="leave-box-header">
+            <span class="leave-box-title">Block Selected Date as Leave or Holiday</span>
+            <button type="button" id="close-leave-modal" class="btn-close-sm" aria-label="Close">&times;</button>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="leave-type-select" class="form-label">Type</label>
+              <select id="leave-type-select" class="form-control">
+                <option value="Leave">Leave (Sick / Casual / Vacation)</option>
+                <option value="Holiday">Official / Public Holiday</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="leave-reason-input" class="form-label">Reason / Holiday Name</label>
+              <input type="text" id="leave-reason-input" class="form-control" placeholder="e.g. Sick day, Diwali, Trip">
+            </div>
+          </div>
+          <div class="leave-box-actions">
+            <button type="button" id="confirm-leave-btn" class="btn btn-warning-solid">Confirm &amp; Block Date</button>
+            <button type="button" id="cancel-leave-btn" class="btn btn-ghost">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Alert messages -->
+        <div id="form-alert" class="form-alert" role="alert" style="display: none;"></div>
+
+        <form id="attendance-form" novalidate>
+          <!-- Shift text input (free text) -->
+          <div class="form-group">
+            <label for="shift-input" class="form-label">
+              Shift
+              <span class="form-hint">(Free text, e.g. 09:00 AM - 06:00 PM)</span>
+            </label>
+            <input 
+              type="text" 
+              id="shift-input" 
+              name="shift" 
+              class="form-control" 
+              placeholder="e.g. 09:00 AM - 06:00 PM"
+              autocomplete="off"
+            >
+          </div>
+
+          <!-- Login and Logout time inputs -->
+          <div class="form-row">
+            <div class="form-group">
+              <div class="label-with-action">
+                <div class="label-left">
+                  <label for="login-time" class="form-label required">Login Time</label>
+                  <span id="login-locked-badge" class="badge-locked" style="display: none;" title="Login time is saved and locked">🔒 Locked</span>
+                </div>
+                <div class="label-actions">
+                  <button type="button" id="login-now-btn" class="btn-now" title="Set to current time">⏱️ Now</button>
+                  <button type="button" id="login-unlock-btn" class="btn-unlock" style="display: none;" title="Unlock to edit login time">✏️ Edit</button>
+                </div>
+              </div>
+              <input 
+                type="time" 
+                id="login-time" 
+                name="loginTime" 
+                class="form-control" 
+                required
+              >
+            </div>
+            <div class="form-group">
+              <div class="label-with-action">
+                <label for="logout-time" class="form-label required">Logout Time</label>
+                <button type="button" id="logout-now-btn" class="btn-now" title="Set to current time">⏱️ Now</button>
+              </div>
+              <input 
+                type="time" 
+                id="logout-time" 
+                name="logoutTime" 
+                class="form-control" 
+                required
+              >
+            </div>
+          </div>
+
+          <!-- Break time input -->
+          <div class="form-group">
+            <label for="break-time" class="form-label">
+              Break Time
+              <span class="form-hint">(in minutes)</span>
+            </label>
+            <input 
+              type="number" 
+              id="break-time" 
+              name="breakMinutes" 
+              class="form-control" 
+              min="0" 
+              step="1"
+              value="0" 
+              placeholder="0"
+            >
+          </div>
+
+          <!-- Calculated Total Working Hours Display -->
+          <div class="calc-box">
+            <div class="calc-label">Total Working Hours</div>
+            <div class="calc-value-container">
+              <span id="calculated-hours" class="calc-value">0h 0m</span>
+              <span id="overnight-indicator" class="overnight-tag" style="display: none;">
+                🌙 Overnight shift (+24h)
+              </span>
+            </div>
+            <p id="calc-breakdown" class="calc-breakdown">Calculated as: Logout &minus; Login &minus; Break</p>
+          </div>
+
+          <!-- Form Action Buttons -->
+          <div class="form-actions">
+            <button type="submit" id="save-btn" class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              Save Attendance
+            </button>
+            <button type="button" id="delete-btn" class="btn btn-danger" style="display: none;" title="Delete record">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Delete
+            </button>
+            <button type="button" id="clear-btn" class="btn btn-ghost" title="Reset fields">
+              Clear
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <!-- Monthly Attendance History Table -->
+    <section class="panel-card history-panel" aria-labelledby="history-heading">
+      <div class="panel-header">
+        <div>
+          <h2 id="history-heading" class="panel-title">Attendance History</h2>
+          <p id="history-subtitle" class="panel-subtitle">Records for selected month</p>
+        </div>
+        <div class="history-count" id="history-count-badge">0 records</div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Shift</th>
+              <th scope="col">Login</th>
+              <th scope="col">Logout</th>
+              <th scope="col">Break</th>
+              <th scope="col">Total Hours</th>
+              <th scope="col" class="text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            <!-- Dynamically populated by app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty state when no records exist for the month -->
+      <div id="history-empty" class="history-empty" style="display: none;">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+        </div>
+        <p class="empty-title">No attendance records for this month</p>
+        <p class="empty-desc">Select a date on the calendar above and log your working hours.</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Personal Attendance Tracker &bull; Local Storage Persistent</p>
+    </footer>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
